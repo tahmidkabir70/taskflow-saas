@@ -5,7 +5,7 @@
 - **`src/types/`**: TypeScript interfaces defining the data model (Task, Project, Category, User, FilterOptions).
 - **`src/lib/`**: Supabase client connection and configuration helpers.
 - **`src/context/`**:
-  - `AuthContext`: Manages Supabase session and authentication state, with demo mode fallback.
+  - `AuthContext`: Manages Supabase session, authentication state, sign in, sign up, password reset (`resetPassword`), with demo mode fallback.
   - `TaskContext`: Manages state and CRUD operations for tasks, projects, and categories, interacting with Supabase or localStorage.
 - **`src/components/`**:
   - `layout/`: AppLayout, Sidebar, Header.
@@ -19,4 +19,5 @@
   - `CategoriesPage.tsx`: Category management.
   - `CalendarPage.tsx`: Upcoming & calendar agenda.
   - `SettingsPage.tsx`: User profile, theme, and configuration.
-  - `AuthPage.tsx`: Sign in / sign up / password reset.
+  - `AuthPage.tsx`: Sign in, sign up, and forgot password reset views.
+- **`src/__tests__/`**: Automated business logic and statistics unit tests.

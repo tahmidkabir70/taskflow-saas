@@ -1,6 +1,6 @@
 # Database Architecture — TaskFlow SaaS
 
-TaskFlow utilizes PostgreSQL hosted on Supabase with strict Row Level Security (RLS) enabled on all tables.
+TaskFlow utilizes PostgreSQL hosted on Supabase with strict Row Level Security (RLS) enabled on all tables and database-level ownership triggers.
 
 ## Tables Overview
 
@@ -20,6 +20,9 @@ TaskFlow utilizes PostgreSQL hosted on Supabase with strict Row Level Security (
    - Core work items.
    - Columns: `id` (UUID, PK), `user_id` (UUID, FK), `title` (TEXT), `description` (TEXT), `status` (TEXT: `todo`, `in-progress`, `completed`), `priority` (TEXT: `low`, `medium`, `high`, `urgent`), `due_date` (TIMESTAMPTZ), `project_id` (UUID, FK), `category_id` (UUID, FK), `created_at`, `updated_at`.
 
-## Row Level Security (RLS) Policies
+## Row Level Security (RLS) & Cross-User Security
 
-All tables have RLS enabled. Users can only access and mutate records where `user_id = auth.uid()` (or `id = auth.uid()` for profiles).
+- RLS is enabled on `profiles`, `projects`, `categories`, and `tasks`.
+- Users can only access and mutate records where `user_id = auth.uid()`.
+- **Cross-User Relationship Protection**: A PostgreSQL trigger (`validate_task_ownership`) inspects every task insertion or update to guarantee that `project_id` and `category_id` belong to the exact same `user_id` as the task, preventing cross-user reference attacks.
+- Profile auto-creation is handled via `handle_new_user` trigger with `ON CONFLICT DO NOTHING` to prevent duplicate profile key conflicts.

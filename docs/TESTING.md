@@ -1,11 +1,20 @@
 # Testing Guide — TaskFlow SaaS
 
-## Test Scenarios
+## Automated Tests
 
-1. **Authentication Flow**
+TaskFlow includes an automated unit test suite verifying core business logic, statistics calculations, and completion rate formulas.
+
+To run automated tests:
+```bash
+npm test
+```
+
+## Manual Test Scenarios
+
+1. **Authentication & Password Reset Flow**
    - Sign up with new credentials.
+   - Test "Forgot Password" recovery email request.
    - Sign in and verify session persistence on page refresh.
-   - Password reset request.
    - Sign out and verify redirection to Auth page.
 
 2. **Task CRUD & Validation**

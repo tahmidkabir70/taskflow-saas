@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle2, ArrowRight, ShieldCheck, Zap, Lock } from 'lucide-react';
+import { CheckCircle2, ArrowRight, ShieldCheck, Zap, Lock, Mail, ArrowLeft } from 'lucide-react';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthPage: React.FC = () => {
-  const { signIn, signUp, enableDemoMode } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const { signIn, signUp, resetPassword, enableDemoMode } = useAuth();
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -20,16 +20,20 @@ export const AuthPage: React.FC = () => {
     setLoading(true);
 
     try {
-      if (isSignUp) {
+      if (authMode === 'signup') {
         const { error } = await signUp(email, password, name);
         if (error) throw error;
-        setMessage('Registration successful! Please check your email to confirm or sign in directly if email confirmation is disabled.');
-      } else {
+        setMessage('Registration successful! Please check your email to confirm or sign in directly.');
+      } else if (authMode === 'signin') {
         const { error } = await signIn(email, password);
         if (error) throw error;
+      } else if (authMode === 'forgot') {
+        const { error } = await resetPassword(email);
+        if (error) throw error;
+        setMessage('Password reset instructions sent to your email address.');
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      setError(err.message || 'Authentication operation failed');
     } finally {
       setLoading(false);
     }
@@ -80,10 +84,10 @@ export const AuthPage: React.FC = () => {
         <div className="w-full max-w-md space-y-8 bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl">
           <div className="text-center">
             <h2 className="text-2xl font-bold tracking-tight text-white">
-              {isSignUp ? 'Create your account' : 'Welcome back'}
+              {authMode === 'signup' ? 'Create your account' : authMode === 'forgot' ? 'Reset your password' : 'Welcome back'}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              {isSignUp ? 'Get started with TaskFlow SaaS in seconds' : 'Sign in to access your workspace'}
+              {authMode === 'signup' ? 'Get started with TaskFlow SaaS in seconds' : authMode === 'forgot' ? 'Enter your email to receive recovery instructions' : 'Sign in to access your workspace'}
             </p>
           </div>
 
@@ -115,7 +119,7 @@ export const AuthPage: React.FC = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignUp && (
+            {authMode === 'signup' && (
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
                   Full Name
@@ -145,26 +149,41 @@ export const AuthPage: React.FC = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
-            </div>
+            {authMode !== 'forgot' && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                    Password
+                  </label>
+                  {authMode === 'signin' && (
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMode('forgot'); setError(''); setMessage(''); }}
+                      className="text-xs text-blue-400 hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={loading}
               className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-lg transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              <span>{loading ? 'Processing...' : isSignUp ? 'Create Account' : 'Sign In'}</span>
+              <span>
+                {loading ? 'Processing...' : authMode === 'signup' ? 'Create Account' : authMode === 'forgot' ? 'Send Reset Instructions' : 'Sign In'}
+              </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
@@ -181,14 +200,25 @@ export const AuthPage: React.FC = () => {
             </div>
           )}
 
-          <div className="text-center pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-xs text-slate-400 hover:text-white transition-colors"
-            >
-              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-            </button>
+          <div className="text-center pt-4 border-t border-slate-800 flex items-center justify-between text-xs">
+            {authMode === 'forgot' ? (
+              <button
+                type="button"
+                onClick={() => { setAuthMode('signin'); setError(''); setMessage(''); }}
+                className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Sign In</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setAuthMode(authMode === 'signin' ? 'signup' : 'signin'); setError(''); setMessage(''); }}
+                className="text-slate-400 hover:text-white transition-colors w-full text-center"
+              >
+                {authMode === 'signin' ? "Don't have an account? Sign Up" : 'Already have an account? Sign In'}
+              </button>
+            )}
           </div>
         </div>
       </div>

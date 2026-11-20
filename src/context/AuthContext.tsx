@@ -9,6 +9,7 @@ interface AuthContextType {
   isDemo: boolean;
   signIn: (email: string, pass: string) => Promise<{ error: any }>;
   signUp: (email: string, pass: string, name: string) => Promise<{ error: any }>;
+  resetPassword: (email: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   enableDemoMode: () => void;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
@@ -31,7 +32,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isDemo, setIsDemo] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check if demo mode was previously active or if Supabase is not configured
     const savedDemo = localStorage.getItem('taskflow_demo_mode') === 'true';
     if (!isSupabaseConfigured || savedDemo) {
       setIsDemo(true);
@@ -41,7 +41,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Supabase Auth listener
     supabase?.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
@@ -94,19 +93,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (email: string, pass: string, name: string) => {
     if (!supabase) return { error: { message: 'Supabase not configured' } };
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password: pass,
       options: {
         data: { display_name: name }
       }
     });
-    if (!error && data.user) {
-      // Create profile record
-      await supabase.from('profiles').insert([
-        { id: data.user.id, email, display_name: name, theme: 'light' }
-      ]);
-    }
+    // Profile is automatically created via database trigger on auth.users insert
+    return { error };
+  };
+
+  const resetPassword = async (email: string) => {
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/auth',
+    });
     return { error };
   };
 
@@ -156,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isDemo,
         signIn,
         signUp,
+        resetPassword,
         signOut,
         enableDemoMode,
         updateProfile,
