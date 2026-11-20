@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useMemo } from '
 import { Task, Project, Category, TaskFilterOptions, DashboardStats } from '../types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import { calculateStats, filterAndSortTasks } from '../utils/taskUtils';
 
 interface TaskContextType {
   tasks: Task[];
@@ -14,20 +15,20 @@ interface TaskContextType {
   stats: DashboardStats;
   
   // Task CRUD
-  createTask: (task: Omit<Task, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<void>;
-  updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
-  deleteTask: (id: string) => Promise<void>;
-  toggleTaskComplete: (id: string) => Promise<void>;
+  createTask: (task: Omit<Task, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<{ error: any }>;
+  updateTask: (id: string, updates: Partial<Task>) => Promise<{ error: any }>;
+  deleteTask: (id: string) => Promise<{ error: any }>;
+  toggleTaskComplete: (id: string) => Promise<{ error: any }>;
 
   // Project CRUD
-  createProject: (project: Omit<Project, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
-  updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
-  deleteProject: (id: string) => Promise<void>;
+  createProject: (project: Omit<Project, 'id' | 'user_id' | 'created_at'>) => Promise<{ error: any }>;
+  updateProject: (id: string, updates: Partial<Project>) => Promise<{ error: any }>;
+  deleteProject: (id: string) => Promise<{ error: any }>;
 
   // Category CRUD
-  createCategory: (category: Omit<Category, 'id' | 'user_id' | 'created_at'>) => Promise<void>;
-  updateCategory: (id: string, updates: Partial<Category>) => Promise<void>;
-  deleteCategory: (id: string) => Promise<void>;
+  createCategory: (category: Omit<Category, 'id' | 'user_id' | 'created_at'>) => Promise<{ error: any }>;
+  updateCategory: (id: string, updates: Partial<Category>) => Promise<{ error: any }>;
+  deleteCategory: (id: string) => Promise<{ error: any }>;
 
   refreshData: () => Promise<void>;
 }
@@ -56,7 +57,7 @@ const INITIAL_DEMO_TASKS: Task[] = [
     description: 'Create responsive layouts for desktop and mobile break points.',
     status: 'in-progress',
     priority: 'high',
-    due_date: new Date(Date.now() + 86400000 * 2).toISOString(), // 2 days from now
+    due_date: new Date(Date.now() + 86400000 * 2).toISOString(),
     project_id: 'proj-1',
     category_id: 'cat-2',
     created_at: new Date().toISOString(),
@@ -68,7 +69,7 @@ const INITIAL_DEMO_TASKS: Task[] = [
     description: 'Ensure user data isolation and secure auth triggers.',
     status: 'completed',
     priority: 'urgent',
-    due_date: new Date(Date.now() - 86400000).toISOString(), // Yesterday (overdue if not completed, but completed)
+    due_date: new Date(Date.now() - 86400000).toISOString(),
     project_id: 'proj-3',
     category_id: 'cat-1',
     created_at: new Date().toISOString(),
@@ -92,7 +93,7 @@ const INITIAL_DEMO_TASKS: Task[] = [
     description: 'Sidebar drawer animation glitches on notch devices.',
     status: 'todo',
     priority: 'urgent',
-    due_date: new Date(Date.now() - 86400000 * 2).toISOString(), // Overdue
+    due_date: new Date(Date.now() - 86400000 * 2).toISOString(),
     project_id: 'proj-1',
     category_id: 'cat-1',
     created_at: new Date().toISOString(),
@@ -139,7 +140,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setLoading(true);
     if (isDemo) {
-      // Load from localStorage or defaults
       const savedTasks = localStorage.getItem('taskflow_demo_tasks');
       const savedProjects = localStorage.getItem('taskflow_demo_projects');
       const savedCategories = localStorage.getItem('taskflow_demo_categories');
@@ -151,7 +151,10 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    if (!supabase) return;
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const [tasksRes, projectsRes, categoriesRes] = await Promise.all([
@@ -160,16 +163,15 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         supabase.from('categories').select('*').order('name', { ascending: true }),
       ]);
 
-      if (tasksRes.error) console.error(tasksRes.error);
-      else setTasks(tasksRes.data || []);
+      if (tasksRes.error) throw tasksRes.error;
+      if (projectsRes.error) throw projectsRes.error;
+      if (categoriesRes.error) throw categoriesRes.error;
 
-      if (projectsRes.error) console.error(projectsRes.error);
-      else setProjects(projectsRes.data || []);
-
-      if (categoriesRes.error) console.error(categoriesRes.error);
-      else setCategories(categoriesRes.data || []);
+      setTasks(tasksRes.data || []);
+      setProjects(projectsRes.data || []);
+      setCategories(categoriesRes.data || []);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to fetch data:', err);
     } finally {
       setLoading(false);
     }
@@ -179,7 +181,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refreshData();
   }, [user, isDemo]);
 
-  // Helper to persist demo state
   const saveDemoState = (newTasks: Task[], newProjects: Project[], newCategories: Category[]) => {
     setTasks(newTasks);
     setProjects(newProjects);
@@ -190,8 +191,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Task CRUD
-  const createTask = async (taskData: Omit<Task, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
-    if (!user) return;
+  const createTask = async (taskData: Omit<Task, 'id' | 'user_id' | 'created_at' | 'updated_at'>): Promise<{ error: any }> => {
+    if (!user) return { error: { message: 'Not authenticated' } };
     if (isDemo) {
       const newTask: Task = {
         ...taskData,
@@ -201,56 +202,71 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updated_at: new Date().toISOString(),
       };
       saveDemoState([newTask, ...tasks], projects, categories);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('tasks').insert([
-      {
-        ...taskData,
-        user_id: user.id,
-      }
-    ]);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('tasks').insert([
+        {
+          ...taskData,
+          user_id: user.id,
+        }
+      ]);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
-  const updateTask = async (id: string, updates: Partial<Task>) => {
+  const updateTask = async (id: string, updates: Partial<Task>): Promise<{ error: any }> => {
     if (isDemo) {
       const updated = tasks.map(t => t.id === id ? { ...t, ...updates, updated_at: new Date().toISOString() } : t);
       saveDemoState(updated, projects, categories);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('tasks').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('tasks').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
-  const deleteTask = async (id: string) => {
+  const deleteTask = async (id: string): Promise<{ error: any }> => {
     if (isDemo) {
       const filtered = tasks.filter(t => t.id !== id);
       saveDemoState(filtered, projects, categories);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('tasks').delete().eq('id', id);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('tasks').delete().eq('id', id);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
-  const toggleTaskComplete = async (id: string) => {
+  const toggleTaskComplete = async (id: string): Promise<{ error: any }> => {
     const task = tasks.find(t => t.id === id);
-    if (!task) return;
+    if (!task) return { error: { message: 'Task not found' } };
     const newStatus = task.status === 'completed' ? 'todo' : 'completed';
-    await updateTask(id, { status: newStatus });
+    return await updateTask(id, { status: newStatus });
   };
 
   // Project CRUD
-  const createProject = async (projData: Omit<Project, 'id' | 'user_id' | 'created_at'>) => {
-    if (!user) return;
+  const createProject = async (projData: Omit<Project, 'id' | 'user_id' | 'created_at'>): Promise<{ error: any }> => {
+    if (!user) return { error: { message: 'Not authenticated' } };
     if (isDemo) {
       const newProj: Project = {
         ...projData,
@@ -259,45 +275,60 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: new Date().toISOString(),
       };
       saveDemoState(tasks, [...projects, newProj], categories);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('projects').insert([{ ...projData, user_id: user.id }]);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('projects').insert([{ ...projData, user_id: user.id }]);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
-  const updateProject = async (id: string, updates: Partial<Project>) => {
+  const updateProject = async (id: string, updates: Partial<Project>): Promise<{ error: any }> => {
     if (isDemo) {
       const updated = projects.map(p => p.id === id ? { ...p, ...updates } : p);
       saveDemoState(tasks, updated, categories);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('projects').update(updates).eq('id', id);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('projects').update(updates).eq('id', id);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
-  const deleteProject = async (id: string) => {
+  const deleteProject = async (id: string): Promise<{ error: any }> => {
     if (isDemo) {
       const updatedProj = projects.filter(p => p.id !== id);
       const updatedTasks = tasks.map(t => t.project_id === id ? { ...t, project_id: undefined } : t);
       saveDemoState(updatedTasks, updatedProj, categories);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('projects').delete().eq('id', id);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('projects').delete().eq('id', id);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
   // Category CRUD
-  const createCategory = async (catData: Omit<Category, 'id' | 'user_id' | 'created_at'>) => {
-    if (!user) return;
+  const createCategory = async (catData: Omit<Category, 'id' | 'user_id' | 'created_at'>): Promise<{ error: any }> => {
+    if (!user) return { error: { message: 'Not authenticated' } };
     if (isDemo) {
       const newCat: Category = {
         ...catData,
@@ -306,105 +337,65 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: new Date().toISOString(),
       };
       saveDemoState(tasks, projects, [...categories, newCat]);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('categories').insert([{ ...catData, user_id: user.id }]);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('categories').insert([{ ...catData, user_id: user.id }]);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
-  const updateCategory = async (id: string, updates: Partial<Category>) => {
+  const updateCategory = async (id: string, updates: Partial<Category>): Promise<{ error: any }> => {
     if (isDemo) {
       const updated = categories.map(c => c.id === id ? { ...c, ...updates } : c);
       saveDemoState(tasks, projects, updated);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('categories').update(updates).eq('id', id);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('categories').update(updates).eq('id', id);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
-  const deleteCategory = async (id: string) => {
+  const deleteCategory = async (id: string): Promise<{ error: any }> => {
     if (isDemo) {
       const updatedCat = categories.filter(c => c.id !== id);
       const updatedTasks = tasks.map(t => t.category_id === id ? { ...t, category_id: undefined } : t);
       saveDemoState(updatedTasks, projects, updatedCat);
-      return;
+      return { error: null };
     }
 
-    if (!supabase) return;
-    const { error } = await supabase.from('categories').delete().eq('id', id);
-    if (error) console.error(error);
-    else await refreshData();
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    try {
+      const { error } = await supabase.from('categories').delete().eq('id', id);
+      if (error) return { error };
+      await refreshData();
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
-  // Filtered Tasks calculation
+  // Filtered Tasks calculation using real production helper
   const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
-      // Search query
-      if (filters.search) {
-        const q = filters.search.toLowerCase();
-        const matchTitle = task.title.toLowerCase().includes(q);
-        const matchDesc = task.description?.toLowerCase().includes(q);
-        if (!matchTitle && !matchDesc) return false;
-      }
-      // Status
-      if (filters.status !== 'all' && task.status !== filters.status) return false;
-      // Priority
-      if (filters.priority !== 'all' && task.priority !== filters.priority) return false;
-      // Project
-      if (filters.project_id !== 'all' && task.project_id !== filters.project_id) return false;
-      // Category
-      if (filters.category_id !== 'all' && task.category_id !== filters.category_id) return false;
-
-      return true;
-    }).sort((a, b) => {
-      const { sort_by, sort_order } = filters;
-      let cmp = 0;
-
-      if (sort_by === 'due_date') {
-        const dateA = a.due_date ? new Date(a.due_date).getTime() : 0;
-        const dateB = b.due_date ? new Date(b.due_date).getTime() : 0;
-        cmp = dateA - dateB;
-      } else if (sort_by === 'priority') {
-        const weights: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
-        cmp = (weights[b.priority] || 0) - (weights[a.priority] || 0);
-      } else if (sort_by === 'title') {
-        cmp = a.title.localeCompare(b.title);
-      } else {
-        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-        cmp = dateA - dateB;
-      }
-
-      return sort_order === 'asc' ? cmp : -cmp;
-    });
+    return filterAndSortTasks(tasks, filters);
   }, [tasks, filters]);
 
-  // Dashboard Statistics calculation
+  // Dashboard Statistics calculation using real production helper
   const stats = useMemo<DashboardStats>(() => {
-    const total = tasks.length;
-    const completed = tasks.filter(t => t.status === 'completed').length;
-    const in_progress = tasks.filter(t => t.status === 'in-progress').length;
-    const pending = tasks.filter(t => t.status === 'todo').length;
-    
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
-    const overdue = tasks.filter(t => {
-      if (t.status === 'completed' || !t.due_date) return false;
-      const due = new Date(t.due_date);
-      due.setHours(0, 0, 0, 0);
-      return due.getTime() < now.getTime();
-    }).length;
-
-    const completion_rate = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-    return { total, completed, pending, in_progress, overdue, completion_rate };
+    return calculateStats(tasks);
   }, [tasks]);
 
   return (

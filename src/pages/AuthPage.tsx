@@ -4,10 +4,11 @@ import { CheckCircle2, ArrowRight, ShieldCheck, Zap, Lock, Mail, ArrowLeft } fro
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const AuthPage: React.FC = () => {
-  const { signIn, signUp, resetPassword, enableDemoMode } = useAuth();
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
+  const { signIn, signUp, resetPassword, updatePassword, enableDemoMode, isRecovery } = useAuth();
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot'>(isRecovery ? 'forgot' : 'signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -20,6 +21,19 @@ export const AuthPage: React.FC = () => {
     setLoading(true);
 
     try {
+      if (isRecovery) {
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match');
+        }
+        if (password.length < 6) {
+          throw new Error('Password must be at least 6 characters');
+        }
+        const { error } = await updatePassword(password);
+        if (error) throw error;
+        setMessage('Password updated successfully! You are now signed in.');
+        return;
+      }
+
       if (authMode === 'signup') {
         const { error } = await signUp(email, password, name);
         if (error) throw error;
@@ -84,14 +98,14 @@ export const AuthPage: React.FC = () => {
         <div className="w-full max-w-md space-y-8 bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl">
           <div className="text-center">
             <h2 className="text-2xl font-bold tracking-tight text-white">
-              {authMode === 'signup' ? 'Create your account' : authMode === 'forgot' ? 'Reset your password' : 'Welcome back'}
+              {isRecovery ? 'Set new password' : authMode === 'signup' ? 'Create your account' : authMode === 'forgot' ? 'Reset your password' : 'Welcome back'}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              {authMode === 'signup' ? 'Get started with TaskFlow SaaS in seconds' : authMode === 'forgot' ? 'Enter your email to receive recovery instructions' : 'Sign in to access your workspace'}
+              {isRecovery ? 'Enter your new secure password below' : authMode === 'signup' ? 'Get started with TaskFlow SaaS in seconds' : authMode === 'forgot' ? 'Enter your email to receive recovery instructions' : 'Sign in to access your workspace'}
             </p>
           </div>
 
-          {!isSupabaseConfigured && (
+          {!isSupabaseConfigured && !isRecovery && (
             <div className="p-4 bg-blue-950/50 border border-blue-900/50 rounded-xl space-y-2">
               <p className="text-xs font-semibold text-blue-300">Supabase keys not detected in environment.</p>
               <p className="text-xs text-blue-400/80">You can instantly test the complete application using our fully interactive Demo Mode.</p>
@@ -119,61 +133,94 @@ export const AuthPage: React.FC = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {authMode === 'signup' && (
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Alex Mercer"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Email Address
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="alex@company.com"
-                className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
-            </div>
-
-            {authMode !== 'forgot' && (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                    Password
+            {isRecovery ? (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                    New Password
                   </label>
-                  {authMode === 'signin' && (
-                    <button
-                      type="button"
-                      onClick={() => { setAuthMode('forgot'); setError(''); setMessage(''); }}
-                      className="text-xs text-blue-400 hover:underline"
-                    >
-                      Forgot password?
-                    </button>
-                  )}
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
                 </div>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {authMode === 'signup' && (
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Alex Mercer"
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="alex@company.com"
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+
+                {authMode !== 'forgot' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                        Password
+                      </label>
+                      {authMode === 'signin' && (
+                        <button
+                          type="button"
+                          onClick={() => { setAuthMode('forgot'); setError(''); setMessage(''); }}
+                          className="text-xs text-blue-400 hover:underline"
+                        >
+                          Forgot password?
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-3.5 py-2.5 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             <button
@@ -182,13 +229,13 @@ export const AuthPage: React.FC = () => {
               className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-lg transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <span>
-                {loading ? 'Processing...' : authMode === 'signup' ? 'Create Account' : authMode === 'forgot' ? 'Send Reset Instructions' : 'Sign In'}
+                {loading ? 'Processing...' : isRecovery ? 'Update Password' : authMode === 'signup' ? 'Create Account' : authMode === 'forgot' ? 'Send Reset Instructions' : 'Sign In'}
               </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
-          {isSupabaseConfigured && (
+          {isSupabaseConfigured && !isRecovery && (
             <div className="text-center pt-2">
               <button
                 type="button"
@@ -200,26 +247,28 @@ export const AuthPage: React.FC = () => {
             </div>
           )}
 
-          <div className="text-center pt-4 border-t border-slate-800 flex items-center justify-between text-xs">
-            {authMode === 'forgot' ? (
-              <button
-                type="button"
-                onClick={() => { setAuthMode('signin'); setError(''); setMessage(''); }}
-                className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back to Sign In</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => { setAuthMode(authMode === 'signin' ? 'signup' : 'signin'); setError(''); setMessage(''); }}
-                className="text-slate-400 hover:text-white transition-colors w-full text-center"
-              >
-                {authMode === 'signin' ? "Don't have an account? Sign Up" : 'Already have an account? Sign In'}
-              </button>
-            )}
-          </div>
+          {!isRecovery && (
+            <div className="text-center pt-4 border-t border-slate-800 flex items-center justify-between text-xs">
+              {authMode === 'forgot' ? (
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode('signin'); setError(''); setMessage(''); }}
+                  className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Sign In</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setAuthMode(authMode === 'signin' ? 'signup' : 'signin'); setError(''); setMessage(''); }}
+                  className="text-slate-400 hover:text-white transition-colors w-full text-center"
+                >
+                  {authMode === 'signin' ? "Don't have an account? Sign Up" : 'Already have an account? Sign In'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

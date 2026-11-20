@@ -7,9 +7,11 @@ interface AuthContextType {
   session: any | null;
   loading: boolean;
   isDemo: boolean;
+  isRecovery: boolean;
   signIn: (email: string, pass: string) => Promise<{ error: any }>;
   signUp: (email: string, pass: string, name: string) => Promise<{ error: any }>;
   resetPassword: (email: string) => Promise<{ error: any }>;
+  updatePassword: (pass: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   enableDemoMode: () => void;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
@@ -30,8 +32,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<any | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isDemo, setIsDemo] = useState<boolean>(false);
+  const [isRecovery, setIsRecovery] = useState<boolean>(false);
 
   useEffect(() => {
+    // Check if recovery token is present in URL hash
+    const hash = window.location.hash;
+    if (hash && hash.includes('type=recovery')) {
+      setIsRecovery(true);
+    }
+
     const savedDemo = localStorage.getItem('taskflow_demo_mode') === 'true';
     if (!isSupabaseConfigured || savedDemo) {
       setIsDemo(true);
@@ -50,8 +59,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    const { data: { subscription } } = supabase?.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase?.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecovery(true);
+      }
       if (session?.user) {
         fetchProfile(session.user.id);
       } else {
@@ -100,7 +112,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: { display_name: name }
       }
     });
-    // Profile is automatically created via database trigger on auth.users insert
     return { error };
   };
 
@@ -112,16 +123,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error };
   };
 
+  const updatePassword = async (pass: string) => {
+    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    const { error } = await supabase.auth.updateUser({ password: pass });
+    if (!error) {
+      setIsRecovery(false);
+      window.location.hash = '';
+    }
+    return { error };
+  };
+
   const signOut = async () => {
     if (isDemo) {
       setIsDemo(false);
       localStorage.removeItem('taskflow_demo_mode');
       setUser(null);
+      setIsRecovery(false);
       return;
     }
     await supabase?.auth.signOut();
     setUser(null);
     setSession(null);
+    setIsRecovery(false);
   };
 
   const enableDemoMode = () => {
@@ -129,6 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('taskflow_demo_mode', 'true');
     localStorage.setItem('taskflow_demo_profile', JSON.stringify(DEMO_USER));
     setUser(DEMO_USER);
+    setIsRecovery(false);
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
@@ -156,9 +180,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         session,
         loading,
         isDemo,
+        isRecovery,
         signIn,
         signUp,
         resetPassword,
+        updatePassword,
         signOut,
         enableDemoMode,
         updateProfile,
