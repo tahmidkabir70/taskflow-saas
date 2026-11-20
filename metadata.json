@@ -1,0 +1,6 @@
+{
+  "name": "TaskFlow SaaS",
+  "description": "Professional Full-Stack Task Management SaaS with Supabase, projects, categories, calendar, and analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
